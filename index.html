@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Weather Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and full viewport height */
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            /* Remove gradient background as video is now the background */
+            background: transparent;
+            color: #e2e8f0;
+        }
+
+        /* Style for the background video to cover the entire viewport */
+        #background-video {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            z-index: -100;
+            /* Place it far behind all content */
+            filter: brightness(50%);
+            /* Darken video slightly for better text contrast */
+        }
+
+        /* Frosted Glass Effect: Applied to both cards and the clock panel */
+        .frosted-panel {
+            background-color: rgba(15, 23, 42, 0.7);
+            /* Slightly translucent dark background */
+            backdrop-filter: blur(10px);
+            /* The crucial blurring effect */
+            -webkit-backdrop-filter: blur(10px);
+            /* Safari support */
+        }
+
+        /* Custom card styling, now inheriting blur from frosted-panel */
+        .weather-card {
+            /* Stronger, darker shadow */
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.4s ease-in-out;
+        }
+
+        .weather-card:hover {
+            transform: translateY(-5px);
+            /* Lift card slightly */
+            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.6);
+        }
+
+        /* --- Custom styles for faster flashing (for the DANGER text) --- */
+        @keyframes fast-pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.2;
+            }
+        }
+
+        .animate-fast-pulse {
+            animation: fast-pulse 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* --- Custom styles for the Border flashing --- */
+        @keyframes border-pulse {
+            0% {
+                border-color: rgba(239, 68, 68, 0.4);
+                /* Faded Red */
+                box-shadow: 0 0 5px rgba(239, 68, 68, 0.3);
+            }
+
+            50% {
+                border-color: rgba(255, 0, 0, 1);
+                /* Bright Red */
+                box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            }
+
+            100% {
+                border-color: rgba(239, 68, 68, 0.4);
+                box-shadow: 0 0 5px rgba(239, 68, 68, 0.3);
+            }
+        }
+
+        .animate-border-pulse {
+            animation: border-pulse 1.5s infinite ease-in-out;
+        }
+
+        /* End of new border pulse styles */
+    </style>
+</head>
+
+<body class="flex flex-col items-center p-4 sm:p-8">
+
+    <video autoplay muted loop id="background-video">
+        <source src="back.mp4" type="video/mp4"
+            onerror="this.onerror=null;this.src='https://assets.mixkit.co/videos/preview/mixkit-beautiful-view-of-the-sea-from-the-shore-43952-large.mp4';">
+        Your browser does not support the video tag.
+    </video>
+
+    <main class="relative z-10 w-full flex flex-col items-center">
+
+        <h1 class="text-4xl font-extrabold text-sky-300 mb-8 border-b-2 border-sky-500/50 pb-2">
+            Nirvana Marina's Weather & Location Tracker
+        </h1>
+        
+        <button id="fullscreen-toggle"
+            class="frosted-panel fixed top-4 right-4 z-50 p-3 rounded-full text-white hover:bg-sky-500/80 transition duration-300 shadow-xl border border-sky-700/50"
+            aria-label="Toggle Fullscreen">
+            <svg id="fullscreen-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0 0h-4m4 0l-5-5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5 5">
+                </path>
+            </svg>
+        </button>
+        <div class="w-full flex flex-col lg:flex-row lg:space-x-8 mb-12">
+
+            <div class="lg:w-3/4 w-full">
+
+                <div id="uae-clock"
+                    class="text-center mb-8 p-4 sm:p-6 rounded-xl shadow-2xl border border-sky-800 w-full mx-auto frosted-panel">
+                </div>
+
+                <div id="cards-container"
+                    class=" inline-flex grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 grid-cols-4 gap-8 w-full">
+                    </div>
+            </div>
+
+            <div class="lg:w-1/4 w-full mt-8 lg:mt-0">
+                <div id="live-alerts-panel"
+                    class="frosted-panel p-4 rounded-xl shadow-2xl border border-red-800 lg:sticky lg:top-8">
+                    <h3 class="text-xl font-bold text-red-400 border-b pb-2 mb-4 border-red-900 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-red-500 animate-fast-pulse" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.394 16c-.77 1.333.192 3 1.732 3z">
+                            </path>
+                        </svg>
+                        Live Sailing Alerts
+                    </h3>
+                    <p class="text-gray-400 text-sm mb-4" id="alerts-status">
+                        </p>
+                    <div id="danger-alerts-list" class="space-y-3">
+                        </div>
+                </div>
+            </div>
+        </div>
+        <h2 class="text-5xl font-bold text-gray-200 mb-6 mt-6">Marina Location Map</h2>
+        <div class="rounded-xl overflow-hidden shadow-2xl border-4 border-sky-900/50 frosted-panel">
+            <iframe src="https://maps.google.com/maps?q=Royal+M+Marina@24.447700,54.337994,Yas+Island+Marina@24.467729,54.609596,Saadiyat+Island+Marina@24.560394,54.459160,Emirates+Palace+Marina@24.4839,54.6033,Al-Dar+Marina,+Abu+Dhabi&output=embed" width="1500" height="800" style="border:0;"
+                allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+            </iframe>
+        </div>
+
+
+        <script>
+            // --- UTILITY FUNCTION: Exponential Backoff for API Calls ---
+            async function exponentialBackoffFetch(url, maxRetries = 5) {
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        const response = await fetch(url);
+                        // On success or a non-retryable status (like 4xx errors)
+                        if (response.ok || response.status < 500) {
+                            return response;
+                        }
+                        // For server errors (5xx), fall through to retry
+                    } catch (error) {
+                        // Network error, fall through to retry
+                        if (i === maxRetries - 1) throw error; // Re-throw if last attempt
+                    }
+
+                    // Calculate delay: 2^i seconds (1s, 2s, 4s, 8s, ...)
+                    const delay = Math.pow(2, i) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                throw new Error(`Failed to fetch data after ${maxRetries} retries.`);
+            }
+
+            // --- LIVE CLOCK LOGIC (The "watch") ---
+            function updateClock() {
+                // Get current time in 'Asia/Dubai' timezone (UAE Time, UTC+4)
+                const now = new Date();
+
+                // Format time components
+                const dayName = now.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    timeZone: 'Asia/Dubai'
+                });
+                const dateStr = now.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    timeZone: 'Asia/Dubai'
+                });
+                // Show hours, minutes, and seconds
+                const timeStr = now.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true,
+                    timeZone: 'Asia/Dubai'
+                });
+
+                const clockElement = document.getElementById('uae-clock');
+                if (clockElement) {
+                    clockElement.innerHTML = `
+                <div class="text-md font-medium text-gray-300 mb-1">Current Time in UAE (GMT+4)</div>
+                <div class="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                    <span class="text-5xl sm:text-6xl font-extrabold text-white leading-tight">${timeStr}</span>
+                    <span class="text-xl sm:text-2xl font-medium text-sky-300">${dayName}</span>
+                </div>
+                <div class="text-sm font-light text-gray-400 mt-2">${dateStr}</div>
+            `;
+                }
+            }
+
+            // Initialize and update the clock every second
+            updateClock();
+            setInterval(updateClock, 1000);
+
+            // --- FORECAST UTILITY ---
+
+            /**
+             * Processes the raw 3-hour forecast data to generate 3 daily summaries (Avg Temp, Avg Wind, Main Icon).
+             * @param {Array} forecastList - The 'list' array from the OpenWeatherMap forecast API response.
+             * @returns {Array<Object>} - An array of 3 daily forecast objects.
+             */
+            function processDailyForecast(forecastList) {
+                const dailyData = {};
+                const today = new Date();
+                today.setHours(0, 0, 0, 0); // Start of today for day comparison
+
+                // Iterate over the 3-hourly forecast items
+                for (const item of forecastList) {
+                    const date = new Date(item.dt * 1000);
+
+                    // Calculate the difference in full days from the start of today
+                    const dayDiff = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                    // We want days 1, 2, and 3 (tomorrow and the next two days)
+                    if (dayDiff > 0 && dayDiff <= 3) {
+                        const dateKey = date.toISOString().split('T')[0]; // Use YYYY-MM-DD as key
+
+                        if (!dailyData[dateKey]) {
+                            dailyData[dateKey] = {
+                                day: date.toLocaleDateString('en-US', {
+                                    weekday: 'short'
+                                }),
+                                temps: [],
+                                winds: [],
+                                icons: []
+                            };
+                        }
+
+                        dailyData[dateKey].temps.push(item.main.temp);
+                        dailyData[dateKey].winds.push(item.wind.speed); // m/s
+                        dailyData[dateKey].icons.push(item.weather[0].icon);
+                    }
+                }
+
+                // Slice to ensure we only get the next 3 days, regardless of incomplete data
+                const dailyForecasts = Object.values(dailyData).slice(0, 3).map(dayEntry => {
+                    // Calculate Avg Temp
+                    const avgTemp = (dayEntry.temps.reduce((a, b) => a + b, 0) / dayEntry.temps.length);
+
+                    // Calculate Avg Wind Speed (m/s) -> convert to knots
+                    const avgWindMps = (dayEntry.winds.reduce((a, b) => a + b, 0) / dayEntry.winds.length);
+                    // Convert m/s to knots: (m/s * 3.6 / 1.852)
+                    const avgWindKnots = ((avgWindMps * 3.6) / 1.852).toFixed(1);
+
+                    // Determine main icon (most frequent icon)
+                    const iconCounts = dayEntry.icons.reduce((acc, icon) => {
+                        // Normalize icon by removing the time suffix (e.g., 01d and 01n both become 01)
+                        const normalizedIcon = icon.slice(0, 2);
+                        acc[normalizedIcon] = (acc[normalizedIcon] || 0) + 1;
+                        return acc;
+                    }, {});
+
+                    // Find the icon with the highest count, defaulting to the first one found
+                    const mainIconNormalized = Object.keys(iconCounts).reduce((a, b) =>
+                        iconCounts[a] > iconCounts[b] ? a : b, Object.keys(iconCounts)[0]);
+
+                    // Append 'd' (day) to the main icon for consistent display unless it's a normalized night icon
+                    const mainIcon = mainIconNormalized + 'd';
+
+                    return {
+                        day: dayEntry.day,
+                        avgTemp: Math.round(avgTemp),
+                        avgWindKnots: avgWindKnots,
+                        icon: mainIcon
+                    };
+                });
+
+                return dailyForecasts;
+            }
+
+
+            // --- WEATHER LOGIC ---
+            // NOTE: The API key is exposed here for demo purposes. In a real application, use a backend proxy.
+            const apiKey = "7b38140838b1439b33dd60ab51488528";
+
+            // Define multiple locations by their precise Latitude and Longitude.
+            const locations = [
+                {
+                    name: "Royal M Marina",
+                    lat: 24.447700,
+                    lon: 54.337994
+                },
+                {
+                    name: "Yas Island Marina",
+                    lat: 24.467729,
+                    lon: 54.609596
+                },
+                {
+                    name: "Saadiyat Island Marina",
+                    lat: 24.560394,
+                    lon: 54.459160
+                },
+                {
+                    name: "Qasr Al-Emarat Marina",
+                    lat: 24.4839,
+                    lon: 54.6033
+                },
+                {
+                    name: "Al-Dar Marina",
+                    lat: 24.453231,
+                    lon: 54.338079
+                },
+            ];
+
+            const container = document.getElementById("cards-container");
+
+            // Function to generate the loading HTML message
+            function getLoadingHtml(message) {
+                return `
+            <div class="col-span-full text-center text-xl text-gray-400 p-8 frosted-panel rounded-xl">
+                <svg class="animate-spin h-6 w-6 mr-3 inline-block text-sky-400" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                    </path>
+                </svg>
+                ${message}
+            </div>
+        `;
+            }
+
+            // Function to create the HTML string for a single weather card
+            function createCardHtml(locationData) {
+                const {
+                    name,
+                    temp,
+                    desc,
+                    icon,
+                    windKmh,
+                    windKnots,
+                    humidity,
+                    forecast
+                } = locationData;
+
+                // NEW LOGIC: Caution is >= 12 knots, Danger is >= 14 knots
+                const windKnotsFloat = parseFloat(windKnots);
+                const isDanger = windKnotsFloat >= 14;
+                const isCaution = windKnotsFloat >= 12 && windKnotsFloat < 14;
+
+                let badgeHtml = '';
+                let windTextColor = 'text-sky-300';
+                let borderColor = 'border-sky-800';
+
+                if (isDanger) {
+                    badgeHtml = '<span class="ml-3 text-xs sm:text-sm inline-flex items-center rounded-full bg-red-800 px-3 py-1 font-medium text-red-300 shadow-md animate-fast-pulse">DANGER!</span>';
+                    windTextColor = 'text-red-400';
+                    borderColor = 'border-red-600 animate-border-pulse';
+                } else if (isCaution) {
+                    // New Caution Badge
+                    badgeHtml = '<span class="ml-3 text-xs sm:text-sm inline-flex items-center rounded-full bg-yellow-800 px-3 py-1 font-medium text-yellow-300 shadow-md">CAUTION</span>';
+                    windTextColor = 'text-yellow-400';
+                    borderColor = 'border-yellow-600'; // Caution border, no flashing
+                }
+
+                return `
+            <div id="card-${name.replace(/\s/g, '-')}" class="weather-card p-6 rounded-xl border-4 ${borderColor} frosted-panel">
+                
+                <h2 class="text-3xl font-extrabold text-sky-400 mb-2 flex items-center">
+                    ${name}${badgeHtml}
+                </h2>
+                
+                <div class="flex justify-center items-center my-4">
+                    <img src="https://openweathermap.org/img/wn/${icon}@2x.png" onerror="this.onerror=null;this.src='https://placehold.co/96x96/020617/ffffff?text=Icon'" alt="Weather Icon" class="w-24 h-24 filter drop-shadow-lg">
+                </div>
+
+                <div class="text-7xl font-black text-sky-200 mb-2">${temp}°C</div>
+                
+                <div class="text-xl font-medium text-gray-400 capitalize mb-6">${desc}</div>
+
+                <div class="flex justify-around text-center border-t pt-4 border-gray-700">
+                    
+                    <div class="flex flex-col items-center">
+                        <svg class="w-7 h-7 ${isDanger ? 'text-red-500' : isCaution ? 'text-yellow-500' : 'text-sky-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span class="text-sm font-semibold text-gray-400 mt-1">Wind Speed</span>
+                        
+                        <span class="text-xl font-bold ${windTextColor} mt-0.5">${windKmh} km/h</span>
+
+                        <span class="text-sm font-light text-gray-400">(${windKnots} knots)</span>
+                    </div>
+                    
+                    <div class="flex flex-col items-center">
+                        <svg class="w-7 h-7 text-emerald-500 transform rotate-180" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                        </svg>
+                        <span class="text-sm font-semibold text-gray-400 mt-1">Humidity</span>
+                        <span class="text-xl font-bold text-emerald-300 mt-0.5">${humidity}%</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-gray-700">
+                    <h3 class="text-lg font-semibold text-sky-400 mb-3">3-Day Sailing Forecast</h3>
+                    <div class="flex justify-between space-x-2 text-center">
+                        ${forecast.map(day => `
+                            <div class="flex-1 p-2 rounded-lg bg-gray-900/50 shadow-inner">
+                                <div class="text-sm font-semibold text-gray-300">${day.day}</div>
+                                
+                                <img src="https://openweathermap.org/img/wn/${day.icon}.png" onerror="this.onerror=null;this.src='https://placehold.co/40x40/020617/ffffff?text=Icon'" alt="Forecast Icon" class="w-10 h-10 mx-auto filter drop-shadow">
+                                
+                                <div class="text-lg font-bold text-sky-200 mt-1">${day.avgTemp}°C</div>
+                                
+                                <div class="text-xs text-gray-400 mt-1">
+                                    ${day.avgWindKnots} knots
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+            }
+
+            // Function to handle showing the error state for a specific card (Dark theme version)
+            function createErrorCardHtml(name, message) {
+                return `
+            <div class="p-6 bg-red-900/30 rounded-xl border-4 border-red-700 shadow-xl text-center frosted-panel">
+                <h2 class="text-2xl font-bold text-red-300 mb-2">${name}</h2>
+                <p class="text-sm text-red-400">${message || "Error loading data."}</p>
+                <p class="text-xs text-red-500 mt-2">Verify API key or network connection.</p>
+            </div>
+        `;
+            }
+
+            // Fetches data for a single location and returns the processed data object (no HTML)
+            async function getWeather(location) {
+                if (apiKey.length < 5) {
+                    return {
+                        error: true,
+                        name: location.name,
+                        message: "API Key is missing or invalid."
+                    };
+                }
+
+                // 1. Current Weather API Call (For real-time data)
+                const currentApiUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${location.lat}&lon=${location.lon}&units=metric&appid=${apiKey}`;
+                // 2. Forecast API Call (For 3-day data, 3-hourly intervals)
+                const forecastApiUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${location.lat}&lon=${location.lon}&units=metric&appid=${apiKey}`;
+
+                try {
+                    // Fetch both concurrently
+                    const [currentResponse, forecastResponse] = await Promise.all([
+                        exponentialBackoffFetch(currentApiUrl),
+                        exponentialBackoffFetch(forecastApiUrl)
+                    ]);
+
+                    const currentData = await currentResponse.json();
+                    const forecastData = await forecastResponse.json();
+
+                    if (currentResponse.status !== 200 || forecastResponse.status !== 200) {
+                        console.error(`API Error for ${location.name}. Current Status: ${currentResponse.status}. Forecast Status: ${forecastResponse.status}`);
+                        return {
+                            error: true,
+                            name: location.name,
+                            message: `API error (status: ${currentResponse.status}/${forecastResponse.status}).`
+                        };
+                    }
+
+                    // 1. Process Current Data
+                    const windKmh = (currentData.wind.speed * 3.6).toFixed(1); // m/s to km/h
+                    // Conversion: knots = km/h / 1.852
+                    const windKnots = (parseFloat(windKmh) / 1.852).toFixed(1);
+
+                    // 2. Process Forecast Data
+                    const threeDayForecast = processDailyForecast(forecastData.list);
+
+                    // 3. Prepare Data Structure (Success)
+                    return {
+                        name: location.name,
+                        temp: Math.round(currentData.main.temp),
+                        desc: currentData.weather[0].description,
+                        icon: currentData.weather[0].icon,
+                        windKmh: windKmh,
+                        windKnots: windKnots,
+                        humidity: currentData.main.humidity,
+                        forecast: threeDayForecast // New forecast data array
+                    };
+                } catch (error) {
+                    console.error(`Fetch failed for ${location.name}:`, error);
+                    return {
+                        error: true,
+                        name: location.name,
+                        message: "Network or API service failed after retries."
+                    };
+                }
+            }
+
+            // Main function to load all weather data concurrently
+            async function loadAllWeather() {
+                // Get the container element once
+                const container = document.getElementById("cards-container");
+                const alertsListElement = document.getElementById('danger-alerts-list');
+                const alertsStatusElement = document.getElementById('alerts-status');
+
+                // Set a temporary "refreshing" message in the alerts panel while waiting for data
+                alertsStatusElement.innerHTML = `
+        <span class="text-gray-400 font-semibold flex items-center">
+            <svg class="animate-spin h-4 w-4 mr-2 text-sky-400" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Fetching latest data...
+        </span>`;
+
+                // Wait for all weather fetch calls to complete (returns data objects now)
+                const cardPromises = locations.map(location => getWeather(location));
+                const cardDataResults = await Promise.all(cardPromises);
+
+                const dangerMarinas = []; // Array to collect names of marinas in danger (where wind >= 14 knots)
+                const cautionMarinas = []; // NEW: Array to collect marinas with caution wind (where wind >= 12 and < 14 knots)
+                const renderedCards = []; // Array to store the new HTML strings
+
+                for (const result of cardDataResults) {
+                    if (result.error) {
+                        // Result is an error object: render error HTML
+                        renderedCards.push(createErrorCardHtml(result.name, result.message));
+                    } else {
+                        const windKnotsFloat = parseFloat(result.windKnots);
+
+                        if (windKnotsFloat >= 14) {
+                            // Check Danger condition (>= 14 knots)
+                            dangerMarinas.push({
+                                name: result.name,
+                                wind: result.windKnots
+                            });
+                        } else if (windKnotsFloat >= 12) {
+                            // NEW: Check Caution condition (>= 12 knots and < 14 knots)
+                            cautionMarinas.push({
+                                name: result.name,
+                                wind: result.windKnots
+                            });
+                        }
+
+                        renderedCards.push(createCardHtml(result));
+                    }
+                }
+
+                // 2. Inject all the generated HTML cards, replacing the old content instantly.
+                container.innerHTML = renderedCards.join('');
+
+                // 3. Update the alerts panel based on priority (Danger > Caution > All Clear)
+                alertsListElement.innerHTML = ''; // Clear existing alerts list
+
+                if (dangerMarinas.length > 0) {
+                    alertsStatusElement.innerHTML = `
+            <span class="text-red-300 font-semibold">
+                ${dangerMarinas.length} critical wind alert(s) detected. DO NOT SAIL!
+            </span>
+            `;
+                    // Generate individual DANGER alert items for the list
+                    alertsListElement.innerHTML += dangerMarinas.map(d => `
+                <div class="p-3 bg-red-900/40 rounded-lg border border-red-700 animate-border-pulse transition duration-300 hover:bg-red-800/50">
+                    <p class="text-lg font-bold text-red-300">${d.name}</p>
+                    <p class="text-sm text-red-400">🚨 CRITICAL WIND: ${d.wind} knots</p>
+                </div>
+            `).join('');
+                }
+
+                if (cautionMarinas.length > 0) {
+                    // If danger is NOT active, set status to caution. If danger IS active, append a general caution message.
+                    if (dangerMarinas.length === 0) {
+                        alertsStatusElement.innerHTML = `
+                <span class="text-yellow-300 font-semibold">
+                    ${cautionMarinas.length} cautionary wind alert(s) detected. Proceed with extreme care.
+                </span>
+                `;
+                    } else {
+                        // If danger is active, just append a subtle message to the status
+                        alertsStatusElement.innerHTML += `<p class="text-yellow-300 text-sm mt-2">+ ${cautionMarinas.length} other caution zones.</p>`;
+                    }
+
+                    // Generate individual CAUTION alert items for the list
+                    alertsListElement.innerHTML += cautionMarinas.map(c => `
+                <div class="p-3 bg-yellow-900/40 rounded-lg border border-yellow-700 transition duration-300 hover:bg-yellow-800/50">
+                    <p class="text-lg font-bold text-yellow-300">${c.name}</p>
+                    <p class="text-sm text-yellow-400">⚠️ RISKY SAILING: ${c.wind} knots</p>
+                </div>
+            `).join('');
+                }
+
+                if (dangerMarinas.length === 0 && cautionMarinas.length === 0) {
+                    alertsStatusElement.textContent = "No immediate danger or caution alerts. Conditions are currently safe for sailing.";
+                    alertsListElement.innerHTML = `
+            <div class="p-3 bg-sky-900/40 rounded-lg border border-sky-700 text-center">
+                <p class="text-md font-semibold text-sky-300">All Clear</p>
+                <p class="text-sm text-gray-400">Continue monitoring for changes.</p>
+            </div>
+            `;
+                }
+            }
+            
+            // --- FULLSCREEN LOGIC ---
+
+            const fullscreenToggle = document.getElementById('fullscreen-toggle');
+            const fullscreenIcon = document.getElementById('fullscreen-icon');
+
+            /**
+             * Updates the SVG icon to reflect the current fullscreen state.
+             * @param {boolean} isFullscreen - True if currently in fullscreen mode.
+             */
+            function updateFullscreenIcon(isFullscreen) {
+                if (isFullscreen) {
+                    // Exit Fullscreen Icon (Shrink)
+                    fullscreenIcon.innerHTML = `
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    `;
+                    // Use a more appropriate 'exit full screen' icon
+                    fullscreenIcon.innerHTML = `
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 10V4m0 0H3m0 0l6 6m6-6v6m0 0h6m0 0l-6-6m6 18v-6m0 0h-6m0 0l6 6M9 14v6m0 0H3m0 0l6-6">
+                        </path>
+                    `;
+                } else {
+                    // Enter Fullscreen Icon (Expand)
+                    fullscreenIcon.innerHTML = `
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0 0h-4m4 0l-5-5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5 5">
+                        </path>
+                    `;
+                }
+            }
+
+
+            /**
+             * Toggles the document into or out of full-screen mode.
+             */
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    // Request fullscreen for the whole document (documentElement)
+                    document.documentElement.requestFullscreen().then(() => {
+                        updateFullscreenIcon(true);
+                    }).catch(err => {
+                        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    // Exit fullscreen
+                    document.exitFullscreen().then(() => {
+                        updateFullscreenIcon(false);
+                    });
+                }
+            }
+            
+            // Listen for the button click
+            fullscreenToggle.addEventListener('click', toggleFullscreen);
+
+            // Also listen for native fullscreen change events (e.g., user presses F11 or Esc)
+            document.addEventListener('fullscreenchange', () => {
+                // The API can change the icon state based on the actual event
+                const isFullscreen = !!document.fullscreenElement;
+                updateFullscreenIcon(isFullscreen);
+            });
+            // --- END FULLSCREEN LOGIC ---
+
+
+            // Initialize on load and then refresh every 10 seconds
+            window.onload = () => {
+                loadAllWeather();
+                // Auto-refresh the weather data every 10 seconds (10000ms)
+                setInterval(loadAllWeather, 5000);
+            };
+        </script>
+        <br><br><b><br><br>
+            <h2 class="text-5xl font-bold text-gray-200 mb-6 mt-6 text-center">Boats Location Map</h2>
+            <script type="text/javascript">
+                // Map appearance
+                var width = "1500"; 		// width in pixels or percentage
+                var height = "800"; 		// height in pixels
+                var latitude = "24.446736"; 	// center latitude (decimal degrees)
+                var longitude = "54.394089"; 	// center longitude (decimal degrees)
+                var zoom = "8"; 			// initial zoom (between 3 and 18)
+                var names = true; 			// always show ship names (defaults to false)
+
+            </script>
+            <script type="text/javascript" src="https://www.vesselfinder.com/aismap.js"></script>
+    </main>
+</body>
+
+</html>
